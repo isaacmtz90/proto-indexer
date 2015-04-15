@@ -1,0 +1,10 @@
+canonical_name: Ferris API
+name: ferris
+version: v1
+description: Ferris-based API
+auth_level: required
+scopes:
+- USERINFO
+allowed_client_ids:
+- API_EXPLORER_CLIENT_ID
+- unspecified

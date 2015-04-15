@@ -1,0 +1,13 @@
+Metadata-Version: 1.1
+Name: Ferris
+Version: 3.0.0-alpha8
+Summary: A framework for creating APIs on Google App Engine
+Home-page: https://bitbucket.org/cloudsherpas/ferris3
+Author: Jon Parrott / Cloud Sherpas
+Author-email: jonathan.parrott@cloudsherpas.com
+License: Apache License 2.0
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python

@@ -1,0 +1,13 @@
+Metadata-Version: 1.1
+Name: protopigeon
+Version: 2.0.1
+Summary: A helper library for working with Google's protorpc and App Engine's datastore
+Home-page: https://github.com/jonparrott/Protopigeon
+Author: Jon Parrott / Cloud Sherpas
+Author-email: jon.wayne.parrott@gmail.com
+License: Apache License 2.0
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python
