@@ -1,15 +1,14 @@
 import traceback
 import logging
+import pprint
 from protorpc import messages
 from google.appengine.api import search
-from datetime import datetime
-import documents
 from ferris3 import auto_service, auto_method, Service
 
 
-class DirectionType(messages.Enum):
-    ASCENDING = 1
-    DESCENDING = 2
+class FTIndex(messages.Message):
+    name = messages.StringField(1)
+    namespace = messages.StringField(2)
 
 
 class RefinementMessage(messages.Message):
@@ -20,15 +19,19 @@ class RefinementMessage(messages.Message):
 class SortExpressionMessage(messages.Message):
     expression = messages.StringField(1)
     direction = messages.StringField(2)
-    default_value = messages.StringField(3)
+
+
+class FieldMessage(messages.Message):
+    expression = messages.StringField(1)
+    direction = messages.StringField(2)
 
 
 class QueryMessage(messages.Message):
-    query_term = messages.StringField(1)
-    indexes = messages.MessageField(documents.FTIndex, 2, repeated=True)
+    query_string = messages.StringField(1, required=True)
+    index = messages.MessageField(FTIndex, 2, required=True)
     facet_refinements = messages.MessageField(RefinementMessage, 3, repeated=True)
     get_facets = messages.BooleanField(4)
-    stem_fields = messages.StringField(5, repeated=True)
+    use_stemming = messages.BooleanField(5)
     snippet_fields = messages.StringField(6, repeated=True)
     limit = messages.IntegerField(7)
     offset = messages.IntegerField(8)
@@ -40,13 +43,46 @@ class StatusMessage(messages.Message):
     content = messages.StringField(2)
 
 
+class FacetValueMessage(messages.Message):
+    count = messages.IntegerField(1)
+    label = messages.StringField(2)
+
+
+class FacetDetailsMessage(messages.Message):
+    name = messages.StringField(1)
+    values = messages.MessageField(FacetValueMessage, 2, repeated=True)
+
+
+class ScoredDocumentMessage(messages.Message):
+    doc_id = messages.StringField(1)
+    fields = messages.MessageField(FieldMessage, 2, repeated=True)
+    language = messages.StringField(3)
+    rank = messages.StringField(4)
+    expressions = messages.MessageField(FieldMessage, 5, repeated=True)
+
+
+class SearchResultsMessage(messages.Message):
+    found = messages.IntegerField(1)
+    results = messages.MessageField(ScoredDocumentMessage, 2, repeated=True)
+    facets = messages.MessageField(FacetDetailsMessage, 3, repeated=True)
+    error_message = messages.StringField(4)
+    status = messages.IntegerField(5)
+
+
 @auto_service
 class SearchDocuments(Service):
 
     def parse_sort_options(self, sorting_options):
         sort_options = []
         for sortopt in sorting_options:
-            sort_options.append(search.SortExpression(expression=sortopt.expression, direction=sortopt.direction))
+            if getattr(sortopt, 'direction') in ["ASCENDING", "DESCENDING"]:
+                direction = search.SortExpression.DESCENDING
+                if sortopt.direction == "ASCENDING":
+                    direction = search.SortExpression.ASCENDING
+                sort_options.append(search.SortExpression(expression=sortopt.expression, direction=direction))
+            else:
+                raise Exception("Sort option not valid: %s" % sortopt.direction)
+
         return sort_options
 
     def parse_facets(self, doc_facets):
@@ -55,44 +91,65 @@ class SearchDocuments(Service):
             facet_options.append(search.FacetRefinement(name=facet.name, value=facet.value))
         return facet_options
 
-    @auto_method(returns=StatusMessage)
+    @auto_method(returns=SearchResultsMessage)
     def search_core(self, request=(QueryMessage,)):
-
+        limitval = 20
+        if request.limit is not None:
+            limitval = request.limit
         options_object = search.QueryOptions(
-            limit=getattr(request, 'limit', 20),
-            cursor=search.Cursor(),
-            offset=getattr(request, 'offset', 0),
+            limit=limitval,
+            offset=getattr(request, 'offset', None),
             sort_options=search.SortOptions(
                 expressions=self.parse_sort_options(getattr(request, 'sort_options', [])),
                 limit=1000),
-            snippeted_fields=getattr(request, 'snippet_fields', [])
+            snippeted_fields=getattr(request, 'snippet_fields', []),
+            ids_only=getattr(request, 'ids_only', False)
         )
 
         facet_refinements_object = self.parse_facets(getattr(request, 'facet_refinements', []))
         string_query = getattr(request, 'query_string', '')
-        if request.use_stemming:
-            string_query = '~' + string_query
+        if getattr(request, 'use_stemming', False):
+            string_query = '~%s' % string_query.strip()
 
         query = search.Query(
             query_string=string_query,
             options=options_object,
-            facet_refinements=facet_refinements_object
+            facet_refinements=facet_refinements_object,
+            enable_facet_discovery=getattr(request, "get_facets", False)
         )
 
         try:
-            indexes.append(request.indexes)
-            my_document = search.Document(
-                doc_id=request.id,
-                fields=self.parsefields(doc_fields=request.search_fields),
-                facets=self.parsefacets(doc_facets=request.search_facets))
-            logging.info(len(indexes))
-            for index in request.indexes:
-                namespace = "default"
-                if hasattr(index, 'namespace'):
-                    namespace = index.namespace
-                index = search.Index(name=index.name, namespace=namespace)
-                index.put(my_document)
-            return StatusMessage(status=200, content="OK")
+
+            requested_index = request.index
+            namespace = "default"
+            if hasattr(requested_index, 'namespace'):
+                namespace = requested_index.namespace
+            index = search.Index(name=requested_index.name, namespace=namespace)
+            result = []
+            if index:
+                documents_found = []
+                facets_found = []
+                result_count = 0
+                result = index.search(query)
+                for document in result.results:
+                    documents_found.append(ScoredDocumentMessage(
+                        doc_id=document.doc_id,
+                        fields=self.parse_fields(document.fields),
+                        language=getattr(document, 'language', 'en'),
+                        rank=getattr(document, 'rank', 0),
+                        expressions=self.parse_expressions(getattr(document, 'expressions', []))))
+                for facet in result.facets:
+                    facets_found.append(FacetDetailsMessage(
+                        name=facet.name,
+                        values=self.parse_found_facets(getattr(facet, 'values', []))))
+
+                result_count = result.number_found
+
+            return SearchResultsMessage(found=result_count,
+                                        results=documents_found,
+                                        facets=facets_found,
+                                        status=200,
+                                        error_message="")
         except:
             logging.info(str(traceback.format_exc()))
-            return StatusMessage(status=500, content="error")
+            return SearchResultsMessage(status=500, content=str(traceback.format_exc()))
