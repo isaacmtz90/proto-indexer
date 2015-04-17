@@ -1,6 +1,5 @@
 import traceback
 import logging
-import pprint
 from protorpc import messages
 from google.appengine.api import search
 from ferris3 import auto_service, auto_method, Service
@@ -22,8 +21,8 @@ class SortExpressionMessage(messages.Message):
 
 
 class FieldMessage(messages.Message):
-    expression = messages.StringField(1)
-    direction = messages.StringField(2)
+    name = messages.StringField(1)
+    value = messages.StringField(2)
 
 
 class QueryMessage(messages.Message):
@@ -91,6 +90,24 @@ class SearchDocuments(Service):
             facet_options.append(search.FacetRefinement(name=facet.name, value=facet.value))
         return facet_options
 
+    def parse_fields(self, doc_fields):
+        fields_found = []
+        for field in doc_fields:
+            fields_found.append(FieldMessage(name=field.name, value=field.value))
+        return fields_found
+
+    def parse_expressions(self, doc_expressions):
+        found_expressions = []
+        for expression in doc_expressions:
+            found_expressions.append(FieldMessage(name=expression.name, value=expression.value))
+        return found_expressions
+
+    def parse_found_facets(self, doc_facets):
+        facets_found = []
+        for facet in doc_facets:
+            facets_found.append(FacetValueMessage(label=facet.label, count=facet.count))
+        return facets_found
+
     @auto_method(returns=SearchResultsMessage)
     def search_core(self, request=(QueryMessage,)):
         limitval = 20
@@ -136,7 +153,7 @@ class SearchDocuments(Service):
                         doc_id=document.doc_id,
                         fields=self.parse_fields(document.fields),
                         language=getattr(document, 'language', 'en'),
-                        rank=getattr(document, 'rank', 0),
+                        rank=str(getattr(document, 'rank', 0)),
                         expressions=self.parse_expressions(getattr(document, 'expressions', []))))
                 for facet in result.facets:
                     facets_found.append(FacetDetailsMessage(

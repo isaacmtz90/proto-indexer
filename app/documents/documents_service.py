@@ -30,12 +30,17 @@ class FacetField(messages.Message):
 
 
 class IndexedDocument(messages.Message):
-    id = messages.StringField(1, required=True)
+    id = messages.StringField(1)
     search_fields = messages.MessageField(DocumentField, 2, repeated=True)
     search_facets = messages.MessageField(FacetField, 3, repeated=True)
     language = messages.EnumField(LanguageType, 4)
     rank = messages.IntegerField(5)
     indexes = messages.MessageField(FTIndex, 6, repeated=True)
+
+
+class BatchIndexedDocument(messages.Message):
+    documents = messages.MessageField(IndexedDocument, 1, repeated=True)
+    indexes = messages.MessageField(FTIndex, 2, repeated=True)
 
 
 class StatusMessage(messages.Message):
@@ -81,7 +86,7 @@ class IndexDocuments(Service):
         try:
             indexes.append(request.indexes)
             my_document = search.Document(
-                doc_id=request.id,
+                doc_id=getattr(request, 'id', None),
                 fields=self.parsefields(doc_fields=request.search_fields),
                 facets=self.parsefacets(doc_facets=request.search_facets))
             logging.info(len(indexes))
@@ -91,6 +96,33 @@ class IndexDocuments(Service):
                     namespace = index.namespace
                 index = search.Index(name=index.name, namespace=namespace)
                 index.put(my_document)
+            return StatusMessage(status=200, content="OK")
+        except:
+            logging.info(str(traceback.format_exc()))
+            return StatusMessage(status=500, content="error")
+
+    @auto_method(returns=StatusMessage)
+    def batch_index(self, request=(BatchIndexedDocument,)):
+        indexes = []
+        documents = []
+        try:
+            indexes.append(request.indexes)
+
+            for document in request.documents:
+                my_document = search.Document(
+                    doc_id=document.id,
+                    fields=self.parsefields(doc_fields=document.search_fields),
+                    facets=self.parsefacets(doc_facets=document.search_facets))
+                documents.append(my_document)
+
+            logging.info("Indexes:" + str(len(indexes)))
+            logging.info("Documents:" + str(len(documents)))
+            for index in request.indexes:
+                namespace = "default"
+                if hasattr(index, 'namespace'):
+                    namespace = index.namespace
+                index = search.Index(name=index.name, namespace=namespace)
+                index.put(documents)
             return StatusMessage(status=200, content="OK")
         except:
             logging.info(str(traceback.format_exc()))
