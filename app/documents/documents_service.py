@@ -65,7 +65,12 @@ class IndexDocuments(Service):
             elif field.type == "number":
                 parsed_fields.append(search.NumberField(name=field.name, value=field.value))
             elif field.type == "date":
-                parsed_fields.append(search.HtmlField(name=field.name, value=datetime.strptime(field.value)))
+                date_to_split = field.value
+                days = date_to_split.split("/")
+                if int(days[0]) < 10:
+                    date_to_split = "0" + date_to_split
+                dateval = datetime.strptime(date_to_split, "%m/%d/%Y %H:%M:%S %p")
+                parsed_fields.append(search.DateField(name=field.name, value=dateval))
             elif field.type == "atom":
                 parsed_fields.append(search.AtomField(name=field.name, value=field.value))
         return parsed_fields
