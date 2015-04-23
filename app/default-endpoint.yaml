@@ -1,8 +1,8 @@
 canonical_name: Ferris API
-name: ferris
+name: search
 version: v1
-description: Ferris-based API
-auth_level: required
+description: Ferris-based Search as a Service API
+auth_level: optional
 scopes:
 - USERINFO
 allowed_client_ids:

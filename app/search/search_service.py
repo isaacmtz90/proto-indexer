@@ -1,5 +1,6 @@
 import traceback
 import logging
+import datetime
 from protorpc import messages
 from google.appengine.api import search
 from ferris3 import auto_service, auto_method, Service
@@ -93,7 +94,11 @@ class SearchDocuments(Service):
     def parse_fields(self, doc_fields):
         fields_found = []
         for field in doc_fields:
-            fields_found.append(FieldMessage(name=field.name, value=field.value))
+            if type(field.value) is datetime.datetime:
+                fields_found.append(FieldMessage(name=field.name, value=str(field.value)))
+            else:
+                fields_found.append(FieldMessage(name=field.name,
+                                                 value=field.value.encode("utf-8").decode("utf-8").strip()))
         return fields_found
 
     def parse_expressions(self, doc_expressions):
@@ -169,4 +174,4 @@ class SearchDocuments(Service):
                                         error_message="")
         except:
             logging.info(str(traceback.format_exc()))
-            return SearchResultsMessage(status=500, content=str(traceback.format_exc()))
+            return SearchResultsMessage(status=500, error_message=str(traceback.format_exc()))
